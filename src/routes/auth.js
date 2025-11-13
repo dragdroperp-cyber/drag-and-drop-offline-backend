@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const mongoose = require('mongoose');
 const Seller = require('../models/Seller');
 const Plan = require('../models/Plan');
 const PlanOrder = require('../models/PlanOrder');
@@ -88,6 +89,17 @@ router.post('/seller', async (req, res) => {
       return res.status(400).json({
         success: false,
         message: 'Email is required'
+      });
+    }
+
+    // Check MongoDB connection before proceeding
+    const mongoState = mongoose.connection.readyState;
+    if (mongoState !== 1) {
+      console.error('❌ MongoDB not connected. Connection state:', mongoState);
+      return res.status(503).json({
+        success: false,
+        message: 'Database connection unavailable. Please try again later.',
+        error: 'MongoDB connection not established'
       });
     }
 
@@ -211,11 +223,47 @@ router.post('/seller', async (req, res) => {
       seller: serializedSeller
     });
   } catch (error) {
-    console.error('Auth route error:', error);
+    console.error('❌ Auth route error:', error);
+    console.error('Error stack:', error.stack);
+    
+    // Handle specific error types
+    if (error.name === 'MongoServerSelectionError' || error.message.includes('ENOTFOUND')) {
+      return res.status(503).json({
+        success: false,
+        message: 'Database connection unavailable. Please check your connection and try again.',
+        error: 'MongoDB connection error'
+      });
+    }
+    
+    if (error.name === 'MongoError' && error.code === 11000) {
+      // Duplicate key error (email already exists)
+      const field = Object.keys(error.keyPattern || {})[0];
+      return res.status(409).json({
+        success: false,
+        message: field === 'email' 
+          ? 'An account with this email already exists. Please sign in instead.'
+          : 'This account already exists. Please sign in instead.',
+        error: 'Duplicate entry'
+      });
+    }
+    
+    if (error.name === 'ValidationError') {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid data provided. Please check your information and try again.',
+        error: error.message
+      });
+    }
+    
+    // Generic error response with more details in development
+    const errorMessage = process.env.NODE_ENV === 'development' 
+      ? `Error authenticating seller: ${error.message}`
+      : 'Unable to authenticate. Please try again or contact support if the problem persists.';
+    
     res.status(500).json({
       success: false,
-      message: 'Error authenticating seller',
-      error: error.message
+      message: errorMessage,
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });
