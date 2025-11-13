@@ -116,10 +116,27 @@ router.post('/seller', async (req, res) => {
         isActive: true,
         lastActivityDate: new Date()
       });
-      await seller.save();
-      console.log(`✅ Created new seller: ${sellerName} (${email})`);
+      
+      try {
+        await seller.save();
+        console.log(`✅ Created new seller: ${sellerName} (${email})`);
+      } catch (saveError) {
+        console.error('❌ Error saving new seller:', saveError);
+        // Check if it's a duplicate email error
+        if (saveError.code === 11000) {
+          // Email already exists - try to fetch the existing seller
+          seller = await Seller.findOne({ email });
+          if (seller) {
+            console.log(`ℹ️  Seller already exists, using existing seller: ${sellerName} (${email})`);
+          } else {
+            throw new Error('Failed to create seller and seller not found');
+          }
+        } else {
+          throw saveError;
+        }
+      }
 
-      // Assign free plan to new seller
+      // Assign free plan to new seller (non-blocking - seller creation succeeds even if plan assignment fails)
       try {
         // Find the free plan (price = 0) or the cheapest active plan
         const freePlan = await Plan.findOne({ 
@@ -157,19 +174,37 @@ router.post('/seller', async (req, res) => {
             productCurrentCount: 0,
             orderCurrentCount: 0
           });
-          await planOrder.save();
-
-          // Update seller with currentPlanId
-          seller.currentPlanId = planOrder._id;
-          await seller.save();
-
-          console.log(`✅ Assigned free plan "${defaultPlan.name}" to new seller: ${sellerName}`);
+          
+          try {
+            await planOrder.save();
+            
+            // Update seller with currentPlanId
+            seller.currentPlanId = planOrder._id;
+            await seller.save();
+            
+            // Refresh seller from database to ensure we have the latest state
+            seller = await Seller.findById(seller._id);
+            
+            console.log(`✅ Assigned free plan "${defaultPlan.name}" to new seller: ${sellerName}`);
+          } catch (planOrderError) {
+            console.error('❌ Error saving plan order or updating seller:', planOrderError);
+            // Refresh seller from database to get clean state
+            seller = await Seller.findById(seller._id);
+            console.log(`⚠️  Seller created but plan assignment failed: ${sellerName}`);
+          }
         } else {
           console.warn(`⚠️  No active plans found in database. Seller created without plan: ${sellerName}`);
         }
       } catch (planError) {
         // Log error but don't fail seller creation if plan assignment fails
-        console.error('Error assigning free plan to new seller:', planError);
+        console.error('❌ Error in plan assignment process:', planError);
+        console.error('Plan error stack:', planError.stack);
+        // Refresh seller from database to ensure we have clean state
+        try {
+          seller = await Seller.findById(seller._id);
+        } catch (refreshError) {
+          console.error('❌ Error refreshing seller after plan assignment failure:', refreshError);
+        }
         console.log(`⚠️  Seller created without plan assignment: ${sellerName}`);
       }
     } else {
@@ -203,7 +238,28 @@ router.post('/seller', async (req, res) => {
         console.log(`✅ Seller authenticated: ${seller.name} (${email})`);
       }
     }
-    console.log('seller', seller);
+    // Ensure seller exists and is fresh from database before serialization
+    if (!seller) {
+      console.error('❌ Seller is null or undefined after creation/update');
+      throw new Error('Seller not found after creation/update');
+    }
+
+    if (!seller._id) {
+      console.error('❌ Seller does not have a valid _id:', seller);
+      throw new Error('Invalid seller data');
+    }
+
+    try {
+      // Refresh seller from database to ensure we have the latest state
+      seller = await Seller.findById(seller._id);
+      if (!seller) {
+        throw new Error('Seller not found in database after refresh');
+      }
+    } catch (refreshError) {
+      console.error('❌ Error refreshing seller before serialization:', refreshError);
+      console.error('Refresh error stack:', refreshError.stack);
+      throw new Error('Failed to retrieve seller data from database');
+    }
 
     const serializedSeller = serializeSeller(seller);
     
