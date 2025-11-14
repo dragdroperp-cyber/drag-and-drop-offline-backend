@@ -530,7 +530,7 @@ const syncOrders = async (req, res) => {
           throw new Error(`Invalid payment method: ${paymentMethod}`);
         }
         
-        // Validate items array
+        // Validate items array and normalize productId
         for (const orderItem of item.items) {
           if (!orderItem.name || typeof orderItem.name !== 'string' || orderItem.name.trim() === '') {
             throw new Error('Order item must have a valid name');
@@ -546,6 +546,21 @@ const syncOrders = async (req, res) => {
           }
           if (!orderItem.unit || typeof orderItem.unit !== 'string') {
             throw new Error('Order item must have a valid unit');
+          }
+          
+          // Normalize productId: convert valid ObjectId strings to ObjectId, invalid ones to null
+          if (orderItem.productId) {
+            if (mongoose.Types.ObjectId.isValid(orderItem.productId)) {
+              // Valid ObjectId string - convert to ObjectId
+              orderItem.productId = new mongoose.Types.ObjectId(orderItem.productId);
+            } else {
+              // Invalid ObjectId (likely a temporary frontend ID) - set to null
+              console.warn(`Order item has invalid productId: ${orderItem.productId}, setting to null`);
+              orderItem.productId = null;
+            }
+          } else {
+            // No productId provided - set to null
+            orderItem.productId = null;
           }
         }
         
@@ -1097,7 +1112,7 @@ const syncOrdersInternal = async (sellerId, items) => {
         throw new Error(`Invalid payment method: ${paymentMethod}`);
       }
       
-      // Validate items array
+      // Validate items array and normalize productId
       for (const orderItem of item.items) {
         if (!orderItem.name || typeof orderItem.name !== 'string' || orderItem.name.trim() === '') {
           throw new Error('Order item must have a valid name');
@@ -1113,6 +1128,21 @@ const syncOrdersInternal = async (sellerId, items) => {
         }
         if (!orderItem.unit || typeof orderItem.unit !== 'string') {
           throw new Error('Order item must have a valid unit');
+        }
+        
+        // Normalize productId: convert valid ObjectId strings to ObjectId, invalid ones to null
+        if (orderItem.productId) {
+          if (mongoose.Types.ObjectId.isValid(orderItem.productId)) {
+            // Valid ObjectId string - convert to ObjectId
+            orderItem.productId = new mongoose.Types.ObjectId(orderItem.productId);
+          } else {
+            // Invalid ObjectId (likely a temporary frontend ID) - set to null
+            console.warn(`Order item has invalid productId: ${orderItem.productId}, setting to null`);
+            orderItem.productId = null;
+          }
+        } else {
+          // No productId provided - set to null
+          orderItem.productId = null;
         }
       }
       
