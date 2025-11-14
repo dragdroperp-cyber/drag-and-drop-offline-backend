@@ -47,7 +47,8 @@ const SellerSchema = new mongoose.Schema({
   },
   phoneNumber: {
     type: String,
-    default: null
+    default: null,
+    unique: false
   },
   city: {
     type: String,
@@ -93,6 +94,5 @@ const SellerSchema = new mongoose.Schema({
 
 // Ensure unique indexes exist
 SellerSchema.index({ email: 1 }, { unique: true });
-SellerSchema.index({ phoneNumber: 1 }, { unique: true, sparse: true }); // Unique phone number, allows null
 
 module.exports = mongoose.model("Seller",SellerSchema);
