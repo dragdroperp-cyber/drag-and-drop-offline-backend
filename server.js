@@ -1,6 +1,7 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
+const path = require('path');
 require('dotenv').config();
 
 const app = express();
@@ -179,9 +180,25 @@ app.use((err, req, res, next) => {
   });
 });
 
-// 404 handler
-app.use((req, res) => {
-  res.status(404).json({ success: false, message: 'Route not found' });
+// Serve React app for client-side routing
+app.get('*', (req, res) => {
+  // Skip API routes
+  if (req.path.startsWith('/api/')) {
+    return res.status(404).json({ success: false, message: 'API route not found' });
+  }
+
+  // For all other routes (including /staff/*), serve the React app
+  res.sendFile(path.join(__dirname, '../frontend/build/index.html'), (err) => {
+    if (err) {
+      console.error('Error serving index.html:', err);
+      res.status(500).json({ success: false, message: 'Internal Server Error' });
+    }
+  });
+});
+
+// 404 handler for API routes
+app.use('/api/*', (req, res) => {
+  res.status(404).json({ success: false, message: 'API route not found' });
 });
 
 const PORT = process.env.PORT || 5000;
