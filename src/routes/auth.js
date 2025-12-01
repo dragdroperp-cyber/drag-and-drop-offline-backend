@@ -13,6 +13,7 @@ const ProductCategory = require('../models/ProductCategory');
 const InviteToken = require('../models/InviteToken');
 const { verifySeller } = require('../middleware/auth');
 const { formatRemaining } = require('../utils/planTimers');
+const { setActivePlanForSeller } = require('../controllers/planValidity');
 
 /**
  * Sanitize GST number - remove spaces and convert to uppercase
@@ -362,7 +363,10 @@ router.post('/seller', async (req, res) => {
       await seller.save(); // Still save to update lastActivityDate
       console.log(`✅ Seller authenticated: ${seller.name} (${email})`);
     }
-    
+
+    // Note: Free plan assignment for incomplete profiles is now handled in /data/all endpoint
+    // This prevents duplicate assignments and ensures proper timing
+
     // Ensure seller exists and is fresh from database before serialization
     if (!seller) {
       console.error('❌ Seller is null or undefined after creation/update');
