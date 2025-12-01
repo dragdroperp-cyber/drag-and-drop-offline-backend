@@ -787,16 +787,106 @@ const getAllData = async (req, res) => {
     const planCheck = await checkPlanValidity(sellerId);
     if (!planCheck.isValid) {
       console.log('🚫 GET ALL DATA: Plan invalid -', planCheck.reason);
-      return res.status(403).json({
-        success: false,
-        planInvalid: true,
-        message: 'Your plan has expired. Please renew your plan to continue accessing the application.',
-        planStatus: {
-          isValid: false,
-          reason: planCheck.reason,
-          remainingMs: planCheck.remainingMs || 0
+
+      // For incomplete profiles, try to assign a free plan automatically
+      const seller = await Seller.findById(sellerId);
+      if (seller && !seller.profileCompleted) {
+        console.log('🔄 GET ALL DATA: Profile incomplete, attempting automatic free plan assignment');
+
+        try {
+          const Plan = require('../models/Plan');
+          const PlanOrder = require('../models/PlanOrder');
+          const { setActivePlanForSeller } = require('../controllers/planValidity');
+
+          // Check if seller already has any active plans
+          const existingPlanOrders = await PlanOrder.find({
+            sellerId: seller._id,
+            paymentStatus: 'completed',
+            status: { $in: ['active', 'paused'] }
+          });
+
+          const hasActivePlan = existingPlanOrders.some(order =>
+            order.expiryDate > new Date() && order.status !== 'expired'
+          );
+
+          if (!hasActivePlan) {
+            console.log('📋 GET ALL DATA: Assigning free plan to seller with incomplete profile');
+
+            // Find free plan
+            const freePlan = await Plan.findOne({
+              isActive: true,
+              price: 0
+            }).sort({ price: 1 });
+
+            if (freePlan) {
+              console.log('✅ GET ALL DATA: Found free plan, assigning:', freePlan.name);
+
+              // Assign free plan using the existing logic
+              const planResult = await setActivePlanForSeller({
+                sellerId: seller._id.toString(),
+                planId: freePlan._id.toString(),
+                allowCreateOnMissing: true
+              });
+
+              if (planResult.success) {
+                console.log('✅ GET ALL DATA: Successfully assigned free plan, proceeding with data fetch');
+                // Plan is now valid, continue with data fetching
+              } else {
+                console.warn('⚠️ GET ALL DATA: Failed to assign free plan:', planResult.message);
+                return res.status(403).json({
+                  success: false,
+                  planInvalid: true,
+                  message: 'Your plan has expired. Please renew your plan to continue accessing the application.',
+                  planStatus: {
+                    isValid: false,
+                    reason: planCheck.reason,
+                    remainingMs: planCheck.remainingMs || 0
+                  }
+                });
+              }
+            } else {
+              console.warn('⚠️ GET ALL DATA: No free plan available');
+              return res.status(403).json({
+                success: false,
+                planInvalid: true,
+                message: 'Your plan has expired. Please renew your plan to continue accessing the application.',
+                planStatus: {
+                  isValid: false,
+                  reason: planCheck.reason,
+                  remainingMs: planCheck.remainingMs || 0
+                }
+              });
+            }
+          } else {
+            console.log('✅ GET ALL DATA: Seller already has an active plan');
+            // Plan is already valid, continue with data fetching
+          }
+        } catch (planError) {
+          console.error('❌ GET ALL DATA: Error assigning free plan:', planError);
+          return res.status(403).json({
+            success: false,
+            planInvalid: true,
+            message: 'Your plan has expired. Please renew your plan to continue accessing the application.',
+            planStatus: {
+              isValid: false,
+              reason: planCheck.reason,
+              remainingMs: planCheck.remainingMs || 0
+            }
+          });
         }
-      });
+      } else {
+        // Profile is completed but plan is still invalid - redirect to upgrade
+        return res.status(403).json({
+          success: false,
+          planInvalid: true,
+          message: 'Your plan has expired. Please renew your plan to continue accessing the application.',
+          planStatus: {
+            isValid: false,
+            reason: planCheck.reason,
+            remainingMs: planCheck.remainingMs || 0
+          }
+        });
+      }
     }
 
     console.log('✅ GET ALL DATA: Plan valid - proceeding with data fetch');
