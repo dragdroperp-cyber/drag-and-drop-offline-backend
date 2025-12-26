@@ -10,6 +10,7 @@ const app = express();
 app.use(cors({
   origin: [
     process.env.FRONTEND_URL || 'http://localhost:3000',
+    process.env.ADMIN_FRONTEND_URL || 'http://localhost:5174',
     'http://localhost:5173',
     'http://localhost:5174',
     'http://localhost:5175',
@@ -195,6 +196,28 @@ app.use((err, req, res, next) => {
     success: false,
     message: err.message || 'Internal Server Error',
     error: process.env.NODE_ENV === 'development' ? err.stack : undefined
+  });
+});
+
+// Serve Static files for main frontend
+app.use(express.static(path.join(__dirname, '../frontend/build')));
+
+// Serve Static files for admin frontend (mount at /admin)
+app.use('/admin', express.static(path.join(__dirname, '../admin-frontend/dist')));
+
+// Serve Admin React app for /admin/* routes
+app.get(['/admin', '/admin/*'], (req, res) => {
+  // Skip API routes within admin path if any
+  if (req.path.startsWith('/api/')) {
+    return res.status(404).json({ success: false, message: 'API route not found' });
+  }
+
+  res.sendFile(path.join(__dirname, '../admin-frontend/dist/index.html'), (err) => {
+    if (err) {
+      console.error('Error serving admin index.html:', err);
+      // Fallback or error
+      res.status(500).send('Error loading admin panel');
+    }
   });
 });
 
