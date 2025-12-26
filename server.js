@@ -203,7 +203,7 @@ app.use((err, req, res, next) => {
 app.use(express.static(path.join(__dirname, '../frontend/build')));
 
 // Serve Static files for admin frontend (mount at /admin)
-app.use('/admin', express.static(path.join(__dirname, '../admin-frontend/dist')));
+app.use('/admin', express.static(path.join(__dirname, '../admin-frontend/dist'), { fallthrough: true }));
 
 // Serve Admin React app for /admin/* routes
 app.get(['/admin', '/admin/*'], (req, res) => {
