@@ -17,31 +17,38 @@ const getTransporter = () => {
   }
 
   const isSecure = process.env.SMTP_SECURE === 'true' || parseInt(SMTP_PORT) === 465;
+  const isGmail = SMTP_HOST.includes('gmail.com');
 
-  cachedTransporter = nodemailer.createTransport({
-    host: SMTP_HOST,
-    port: parseInt(SMTP_PORT),
-    secure: isSecure,
+  const config = {
     auth: {
       user: SMTP_USER,
       pass: SMTP_PASS,
     },
-    // Enhanced Reliability for Cloud Platforms (Render, Heroku, etc.)
-    connectionTimeout: 15000, // 15 seconds
-    greetingTimeout: 10000,   // 10 seconds
-    socketTimeout: 20000,     // 20 seconds
-    pool: true,               // Use pooling for better performance
+    connectionTimeout: 30000, // 30 seconds for cloud stability
+    greetingTimeout: 20000,   // 20 seconds
+    socketTimeout: 45000,     // 45 seconds
+    pool: true,
     tls: {
-      // Do not fail on invalid certificates (common on some proxies)
-      rejectUnauthorized: false
+      rejectUnauthorized: false,
+      minVersion: 'TLSv1.2'
     }
-  });
+  };
+
+  if (isGmail) {
+    config.service = 'gmail';
+  } else {
+    config.host = SMTP_HOST;
+    config.port = parseInt(SMTP_PORT);
+    config.secure = isSecure;
+  }
+
+  cachedTransporter = nodemailer.createTransport(config);
 
   // Verify connection once (asynchronous)
   cachedTransporter.verify((error, success) => {
     if (error) {
       console.error('❌ SMTP Connection Error:', error.message);
-      console.error('🔴 Please check your SMTP_USER and SMTP_PASS in .env');
+      console.error(`🔴 Debug Info: Host=${SMTP_HOST}, Port=${SMTP_PORT}, Secure=${isSecure}, GmailService=${isGmail}`);
       cachedTransporter = null; // Reset cache so it tries again next time
     } else {
       console.log('✅ SMTP server is ready to take our messages');
