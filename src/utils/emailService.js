@@ -7,49 +7,60 @@ let cachedTransporter = null;
  * If variables are not set, it will log a warning and return null
  */
 const getTransporter = () => {
-    if (cachedTransporter) return cachedTransporter;
+  if (cachedTransporter) return cachedTransporter;
 
-    const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS } = process.env;
+  const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS } = process.env;
 
-    if (!SMTP_HOST || !SMTP_PORT || !SMTP_USER || !SMTP_PASS) {
-        console.warn('⚠️  Email notification service skipped: Missing SMTP configuration in .env');
-        return null;
+  if (!SMTP_HOST || !SMTP_PORT || !SMTP_USER || !SMTP_PASS) {
+    console.warn('⚠️  Email notification service skipped: Missing SMTP configuration in .env');
+    return null;
+  }
+
+  const isSecure = process.env.SMTP_SECURE === 'true' || parseInt(SMTP_PORT) === 465;
+
+  cachedTransporter = nodemailer.createTransport({
+    host: SMTP_HOST,
+    port: parseInt(SMTP_PORT),
+    secure: isSecure,
+    auth: {
+      user: SMTP_USER,
+      pass: SMTP_PASS,
+    },
+    // Enhanced Reliability for Cloud Platforms (Render, Heroku, etc.)
+    connectionTimeout: 15000, // 15 seconds
+    greetingTimeout: 10000,   // 10 seconds
+    socketTimeout: 20000,     // 20 seconds
+    pool: true,               // Use pooling for better performance
+    tls: {
+      // Do not fail on invalid certificates (common on some proxies)
+      rejectUnauthorized: false
     }
+  });
 
-    cachedTransporter = nodemailer.createTransport({
-        host: SMTP_HOST,
-        port: parseInt(SMTP_PORT),
-        secure: parseInt(SMTP_PORT) === 465, // true for 465, false for other ports
-        auth: {
-            user: SMTP_USER,
-            pass: SMTP_PASS,
-        },
-    });
+  // Verify connection once (asynchronous)
+  cachedTransporter.verify((error, success) => {
+    if (error) {
+      console.error('❌ SMTP Connection Error:', error.message);
+      console.error('🔴 Please check your SMTP_USER and SMTP_PASS in .env');
+      cachedTransporter = null; // Reset cache so it tries again next time
+    } else {
+      console.log('✅ SMTP server is ready to take our messages');
+    }
+  });
 
-    // Verify connection once (asynchronous)
-    cachedTransporter.verify((error, success) => {
-        if (error) {
-            console.error('❌ SMTP Connection Error:', error.message);
-            console.error('🔴 Please check your SMTP_USER and SMTP_PASS in .env');
-            cachedTransporter = null; // Reset cache so it tries again next time
-        } else {
-            console.log('✅ SMTP server is ready to take our messages');
-        }
-    });
-
-    return cachedTransporter;
+  return cachedTransporter;
 };
 
 /**
  * Generate a professional HTML template for login notification
  */
 const generateLoginTemplate = (userName, loginTime, loginIp, userAgent) => {
-    const brandColor = '#4f46e5'; // Indigo
-    const secondaryColor = '#f3f4f6';
-    const textColor = '#1f2937';
-    const lightTextColor = '#6b7280';
+  const brandColor = '#4f46e5'; // Indigo
+  const secondaryColor = '#f3f4f6';
+  const textColor = '#1f2937';
+  const lightTextColor = '#6b7280';
 
-    return `
+  return `
     <!DOCTYPE html>
     <html>
     <head>
@@ -121,16 +132,16 @@ const generateLoginTemplate = (userName, loginTime, loginIp, userAgent) => {
  * Generate a professional HTML template for plan purchase confirmation
  */
 const generatePlanPurchaseTemplate = (userName, planName, amount, expiryDate, transactionId) => {
-    const brandColor = '#10b981'; // Emerald Green for success
-    const secondaryColor = '#f3f4f6';
-    const textColor = '#1f2937';
-    const lightTextColor = '#6b7280';
+  const brandColor = '#10b981'; // Emerald Green for success
+  const secondaryColor = '#f3f4f6';
+  const textColor = '#1f2937';
+  const lightTextColor = '#6b7280';
 
-    const formattedExpiry = new Date(expiryDate).toLocaleDateString('en-IN', {
-        dateStyle: 'long'
-    });
+  const formattedExpiry = new Date(expiryDate).toLocaleDateString('en-IN', {
+    dateStyle: 'long'
+  });
 
-    return `
+  return `
     <!DOCTYPE html>
     <html>
     <head>
@@ -212,34 +223,34 @@ const generatePlanPurchaseTemplate = (userName, planName, amount, expiryDate, tr
  * Generate a professional HTML template for inventory alerts (Low Stock, Out of Stock, or Expiry)
  */
 const generateInventoryAlertTemplate = (userName, alertType, products) => {
-    const typeConfigs = {
-        'low_stock': {
-            title: 'Low Stock Alert',
-            bannerColor: '#f59e0b', // Amber
-            icon: '⚠️',
-            message: 'The following products are running low on stock. Please consider restocking soon to avoid service interruptions.'
-        },
-        'out_of_stock': {
-            title: 'Out of Stock Alert',
-            bannerColor: '#ef4444', // Red
-            icon: '🚫',
-            message: 'The following products are officially OUT OF STOCK. These items cannot be sold until stock is added.'
-        },
-        'expiry': {
-            title: 'Expiry Date Alert',
-            bannerColor: '#6366f1', // Indigo
-            icon: '⏰',
-            message: 'The following product batches are approaching their expiry date. Please take necessary action to manage your inventory.'
-        }
-    };
+  const typeConfigs = {
+    'low_stock': {
+      title: 'Low Stock Alert',
+      bannerColor: '#f59e0b', // Amber
+      icon: '⚠️',
+      message: 'The following products are running low on stock. Please consider restocking soon to avoid service interruptions.'
+    },
+    'out_of_stock': {
+      title: 'Out of Stock Alert',
+      bannerColor: '#ef4444', // Red
+      icon: '🚫',
+      message: 'The following products are officially OUT OF STOCK. These items cannot be sold until stock is added.'
+    },
+    'expiry': {
+      title: 'Expiry Date Alert',
+      bannerColor: '#6366f1', // Indigo
+      icon: '⏰',
+      message: 'The following product batches are approaching their expiry date. Please take necessary action to manage your inventory.'
+    }
+  };
 
-    const config = typeConfigs[alertType] || typeConfigs['low_stock'];
-    const brandColor = config.bannerColor;
-    const secondaryColor = '#f3f4f6';
-    const textColor = '#1f2937';
-    const lightTextColor = '#6b7280';
+  const config = typeConfigs[alertType] || typeConfigs['low_stock'];
+  const brandColor = config.bannerColor;
+  const secondaryColor = '#f3f4f6';
+  const textColor = '#1f2937';
+  const lightTextColor = '#6b7280';
 
-    const productRows = products.map(p => `
+  const productRows = products.map(p => `
         <tr>
             <td style="padding: 12px; border-bottom: 1px solid #e5e7eb; font-size: 14px;">
                 <strong>${p.name}</strong>
@@ -247,13 +258,13 @@ const generateInventoryAlertTemplate = (userName, alertType, products) => {
             </td>
             <td style="padding: 12px; border-bottom: 1px solid #e5e7eb; font-size: 14px; text-align: right;">
                 ${alertType === 'expiry' ?
-            `<span style="color: ${brandColor}; font-weight: 600;">${new Date(p.expiryDate).toLocaleDateString('en-IN')}</span>` :
-            `<span style="font-weight: 600;">${p.currentStock} ${p.unit}</span>`}
+      `<span style="color: ${brandColor}; font-weight: 600;">${new Date(p.expiryDate).toLocaleDateString('en-IN')}</span>` :
+      `<span style="font-weight: 600;">${p.currentStock} ${p.unit}</span>`}
             </td>
         </tr>
     `).join('');
 
-    return `
+  return `
     <!DOCTYPE html>
     <html>
     <head>
@@ -324,98 +335,98 @@ const generateInventoryAlertTemplate = (userName, alertType, products) => {
  * Send login notification email
  */
 const sendLoginEmail = async (email, name, ip, userAgent) => {
-    const transporter = getTransporter();
-    if (!transporter) return;
+  const transporter = getTransporter();
+  if (!transporter) return;
 
-    const loginTime = new Date().toLocaleString('en-IN', {
-        timeZone: 'Asia/Kolkata',
-        dateStyle: 'full',
-        timeStyle: 'medium'
-    });
+  const loginTime = new Date().toLocaleString('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    dateStyle: 'full',
+    timeStyle: 'medium'
+  });
 
-    const mailOptions = {
-        from: `"${process.env.EMAIL_FROM_NAME || 'Grocery Studio Security'}" <${process.env.EMAIL_FROM || process.env.SMTP_USER}>`,
-        to: email,
-        subject: 'New Login to Your Grocery Studio Account',
-        html: generateLoginTemplate(name, loginTime, ip, userAgent),
-    };
+  const mailOptions = {
+    from: `"${process.env.EMAIL_FROM_NAME || 'Grocery Studio Security'}" <${process.env.EMAIL_FROM || process.env.SMTP_USER}>`,
+    to: email,
+    subject: 'New Login to Your Grocery Studio Account',
+    html: generateLoginTemplate(name, loginTime, ip, userAgent),
+  };
 
-    try {
-        console.log(`📡 Attempting to send login email to: ${email}...`);
-        const info = await transporter.sendMail(mailOptions);
-        console.log(`✅ Login notification email sent successfully to ${email}`);
-        console.log(`📧 Message ID: ${info.messageId}`);
-        return info;
-    } catch (error) {
-        console.error(`❌ FAILED to send login email to ${email}`);
-        console.error(`🔴 Error Details:`, error.message);
-        if (error.code === 'EAUTH') {
-            console.error('💡 TIP: This looks like an authentication error. Check your SMTP_USER and SMTP_PASS (App Password).');
-        }
-        return null;
+  try {
+    console.log(`📡 Attempting to send login email to: ${email}...`);
+    const info = await transporter.sendMail(mailOptions);
+    console.log(`✅ Login notification email sent successfully to ${email}`);
+    console.log(`📧 Message ID: ${info.messageId}`);
+    return info;
+  } catch (error) {
+    console.error(`❌ FAILED to send login email to ${email}`);
+    console.error(`🔴 Error Details:`, error.message);
+    if (error.code === 'EAUTH') {
+      console.error('💡 TIP: This looks like an authentication error. Check your SMTP_USER and SMTP_PASS (App Password).');
     }
+    return null;
+  }
 };
 
 /**
  * Send plan purchase confirmation email
  */
 const sendPlanPurchaseEmail = async (email, name, planName, amount, expiryDate, transactionId) => {
-    const transporter = getTransporter();
-    if (!transporter) return;
+  const transporter = getTransporter();
+  if (!transporter) return;
 
-    const mailOptions = {
-        from: `"${process.env.EMAIL_FROM_NAME || 'Grocery Studio'}" <${process.env.EMAIL_FROM || process.env.SMTP_USER}>`,
-        to: email,
-        subject: `Success! Your ${planName} Plan is Now Active`,
-        html: generatePlanPurchaseTemplate(name, planName, amount, expiryDate, transactionId),
-    };
+  const mailOptions = {
+    from: `"${process.env.EMAIL_FROM_NAME || 'Grocery Studio'}" <${process.env.EMAIL_FROM || process.env.SMTP_USER}>`,
+    to: email,
+    subject: `Success! Your ${planName} Plan is Now Active`,
+    html: generatePlanPurchaseTemplate(name, planName, amount, expiryDate, transactionId),
+  };
 
-    try {
-        console.log(`📡 Attempting to send plan purchase email to: ${email}...`);
-        const info = await transporter.sendMail(mailOptions);
-        console.log(`✅ Plan purchase confirmation email sent successfully to ${email}`);
-        return info;
-    } catch (error) {
-        console.error(`❌ FAILED to send plan purchase email to ${email}`);
-        console.error(`🔴 Error Details:`, error.message);
-        return null;
-    }
+  try {
+    console.log(`📡 Attempting to send plan purchase email to: ${email}...`);
+    const info = await transporter.sendMail(mailOptions);
+    console.log(`✅ Plan purchase confirmation email sent successfully to ${email}`);
+    return info;
+  } catch (error) {
+    console.error(`❌ FAILED to send plan purchase email to ${email}`);
+    console.error(`🔴 Error Details:`, error.message);
+    return null;
+  }
 };
 
 /**
  * Send grouped inventory alert email
  */
 const sendInventoryAlertEmail = async (email, name, alertType, products) => {
-    const transporter = getTransporter();
-    if (!transporter) return;
+  const transporter = getTransporter();
+  if (!transporter) return;
 
-    const subjects = {
-        'low_stock': '⚠️ Low Stock Alert: Items need restocking',
-        'out_of_stock': '🚫 Critical: Products are Out of Stock',
-        'expiry': '⏰ Expiry Alert: Product batches expiring soon'
-    };
+  const subjects = {
+    'low_stock': '⚠️ Low Stock Alert: Items need restocking',
+    'out_of_stock': '🚫 Critical: Products are Out of Stock',
+    'expiry': '⏰ Expiry Alert: Product batches expiring soon'
+  };
 
-    const mailOptions = {
-        from: `"${process.env.EMAIL_FROM_NAME || 'Grocery Studio Inventory'}" <${process.env.EMAIL_FROM || process.env.SMTP_USER}>`,
-        to: email,
-        subject: subjects[alertType] || 'Inventory Alert',
-        html: generateInventoryAlertTemplate(name, alertType, products),
-    };
+  const mailOptions = {
+    from: `"${process.env.EMAIL_FROM_NAME || 'Grocery Studio Inventory'}" <${process.env.EMAIL_FROM || process.env.SMTP_USER}>`,
+    to: email,
+    subject: subjects[alertType] || 'Inventory Alert',
+    html: generateInventoryAlertTemplate(name, alertType, products),
+  };
 
-    try {
-        console.log(`📡 Attempting to send ${alertType} alert email to: ${email}...`);
-        const info = await transporter.sendMail(mailOptions);
-        console.log(`✅ ${alertType} alert email sent successfully to ${email}`);
-        return info;
-    } catch (error) {
-        console.error(`❌ FAILED to send ${alertType} alert email to ${email}`);
-        console.error(`🔴 Error Details:`, error.message);
-        return null;
-    }
+  try {
+    console.log(`📡 Attempting to send ${alertType} alert email to: ${email}...`);
+    const info = await transporter.sendMail(mailOptions);
+    console.log(`✅ ${alertType} alert email sent successfully to ${email}`);
+    return info;
+  } catch (error) {
+    console.error(`❌ FAILED to send ${alertType} alert email to ${email}`);
+    console.error(`🔴 Error Details:`, error.message);
+    return null;
+  }
 };
 
 module.exports = {
-    sendLoginEmail,
-    sendPlanPurchaseEmail,
-    sendInventoryAlertEmail
+  sendLoginEmail,
+  sendPlanPurchaseEmail,
+  sendInventoryAlertEmail
 };
