@@ -184,44 +184,67 @@ router.post('/seller', async (req, res) => {
 
     if (authHeader && authHeader.startsWith('Bearer ')) {
       const idToken = authHeader.split('Bearer ')[1];
+
       try {
-        // Try to import google-auth-library to verify token signature
-        // detailed verification requires project ID, but basic signature check is better than nothing
-        let OAuth2Client;
-        try {
-          // google-auth-library is a dependency of googleapis, which is installed
-          const { OAuth2Client: OAuth2ClientImport } = require('google-auth-library');
-          OAuth2Client = OAuth2ClientImport;
-        } catch (e) {
-          console.warn('⚠️ google-auth-library not found, skipping strict token verification');
-        }
+        // Verify Firebase ID Token
+        // 'google-auth-library' often fails for Firebase tokens; manual verification is more reliable.
+        const projectId = process.env.FIREBASE_PROJECT_ID || 'dragdrop-2a9a4';
 
-        if (OAuth2Client) {
-          const client = new OAuth2Client();
-          // Verify the token
-          // If FIREBASE_CLIENT_ID is not set, we skip audience check but verify signature
-          const ticket = await client.verifyIdToken({
-            idToken: idToken,
-            audience: process.env.FIREBASE_CLIENT_ID,
+        // Function to fetch Firebase public keys (cached in memory could be added for perf, but this is safe)
+        const getFirebasePublicKeys = () => {
+          return new Promise((resolve, reject) => {
+            const https = require('https');
+            https.get('https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com', (res) => {
+              let data = '';
+              res.on('data', (chunk) => data += chunk);
+              res.on('end', () => {
+                try {
+                  resolve(JSON.parse(data));
+                } catch (e) {
+                  reject(e);
+                }
+              });
+            }).on('error', (err) => reject(err));
           });
-          const payload = ticket.getPayload();
+        };
 
-          if (payload.email === email) {
-            tokenVerified = true;
-            //('✅ Firebase ID Token verified for:', email);
-          } else {
-            console.warn(`⚠️ Token email (${payload.email}) does not match request email (${email})`);
-          }
-        } else {
-          console.warn('⚠️ google-auth-library not loaded. Cannot strictly verify token signature.');
-          // STRICT SECURITY: Do not allow login without signature verification.
-          // if (idToken) tokenVerified = true; 
+        // Fetch keys 
+        const keys = await getFirebasePublicKeys();
+
+        // Decode token header to find Key ID (kid)
+        const decodedHeader = jwt.decode(idToken, { complete: true });
+        if (!decodedHeader || !decodedHeader.header || !decodedHeader.header.kid) {
+          throw new Error('Invalid token header: Missing Key ID (kid)');
         }
+
+        const kid = decodedHeader.header.kid;
+        const pubKey = keys[kid];
+
+        if (!pubKey) {
+          throw new Error(`Public key not found for kid: ${kid}`);
+        }
+
+        // Verify signature and claims
+        const decodedToken = jwt.verify(idToken, pubKey, {
+          algorithms: ['RS256'],
+          audience: projectId,
+          issuer: `https://securetoken.google.com/${projectId}`
+        });
+
+        // Ensure the email matches the claim
+        if (decodedToken.email === email) {
+          tokenVerified = true;
+          // console.log('✅ Firebase ID Token verified for:', email);
+        } else {
+          console.warn(`⚠️ Token email (${decodedToken.email}) does not match request body email (${email})`);
+        }
+
       } catch (verifyError) {
         console.error('❌ Token verification failed:', verifyError.message);
-        // If enforcement is strict, we would return error here
+
+        // If ENV variable is set to strict, reject request. Otherwise, allow (for now) but log error.
         if (process.env.ENFORCE_FIREBASE_AUTH === 'true') {
-          return res.status(401).json({ success: false, message: 'Invalid authentication token' });
+          return res.status(401).json({ success: false, message: 'Invalid verification token' });
         }
       }
     }
