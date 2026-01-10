@@ -17,20 +17,25 @@ const trustedOrigins = allowedOrigins.length > 0 ? allowedOrigins : [
  * Sets a non-httpOnly cookie that the client must send back in a header
  */
 const doubleSubmitCookie = (req, res, next) => {
-    // Generate token if not exists
-    if (!req.cookies['XSRF-TOKEN']) {
-        const token = crypto.randomBytes(32).toString('hex');
-        const isProduction = process.env.NODE_ENV === 'production';
-
-        res.cookie('XSRF-TOKEN', token, {
-            httpOnly: false, // Must be readable by frontend JS
-            secure: isProduction || isSecure,
-            sameSite: isProduction ? 'none' : 'lax',
-            domain: process.env.COOKIE_DOMAIN || undefined,
-            path: '/', // Crucial: make it visible to all paths
-            maxAge: 24 * 60 * 60 * 1000 // 1 day
-        });
+    // Get existing token or generate new one
+    let token = req.cookies['XSRF-TOKEN'];
+    if (!token) {
+        token = crypto.randomBytes(32).toString('hex');
     }
+
+    const isProduction = process.env.NODE_ENV === 'production';
+
+    // Always set the cookie to ensure correct flags (especially httpOnly: false)
+    // This fixes issues where a client might have a stale httpOnly cookie
+    res.cookie('XSRF-TOKEN', token, {
+        httpOnly: false, // Must be readable by frontend JS
+        secure: isProduction || req.secure,
+        sameSite: isProduction ? 'none' : 'lax',
+        domain: process.env.COOKIE_DOMAIN || undefined,
+        path: '/', // Crucial: make it visible to all paths
+        maxAge: 24 * 60 * 60 * 1000 // 1 day
+    });
+
     next();
 };
 
