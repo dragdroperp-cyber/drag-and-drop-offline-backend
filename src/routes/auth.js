@@ -551,8 +551,8 @@ router.post('/seller', validate(authSchemas.sellerAuth), async (req, res) => {
     // Set HttpOnly Cookie
     res.cookie('token', token, {
       httpOnly: true,
-      secure: req.secure || req.headers['x-forwarded-proto'] === 'https',
-      sameSite: 'lax',
+      secure: req.secure || req.headers['x-forwarded-proto'] === 'https' || process.env.NODE_ENV === 'production',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
       path: '/',
       maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
     });
@@ -644,7 +644,7 @@ router.post('/logout', (req, res) => {
   res.clearCookie('token', {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax'
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax'
   });
   res.json({ success: true, message: 'Logged out successfully' });
 });
