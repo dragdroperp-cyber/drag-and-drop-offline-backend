@@ -43,6 +43,19 @@ const csrfProtection = (req, res, next) => {
         return next();
     }
 
+    // Skip for Auth Routes (Login/Register) to avoid initial CSRF block
+    const excludedRoutes = [
+        '/api/auth/seller',
+        '/api/auth/seller/register',
+        '/api/auth/google',
+        '/api/auth/firebase'
+    ];
+
+    // Check if current path matches any excluded route
+    if (excludedRoutes.some(route => req.originalUrl.split('?')[0].endsWith(route))) {
+        return next();
+    }
+
     // 1. Origin/Referer Check
     const origin = req.headers.origin || req.headers.referer;
 
@@ -57,6 +70,7 @@ const csrfProtection = (req, res, next) => {
 
     if (!isTrusted) {
         console.warn(`[CSRF_ATTEMPT] Blocked request from untrusted origin: ${origin}`);
+        console.warn(`[CSRF_ATTEMPT] Trusted origins: ${trustedOrigins.join(', ')}`);
         return res.status(403).json({
             success: false,
             message: 'Cross-Origin request blocked. Security violation.'
