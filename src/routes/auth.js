@@ -193,7 +193,7 @@ router.post('/seller', validate(authSchemas.sellerAuth), async (req, res) => {
       try {
         // Verify Firebase ID Token
         // 'google-auth-library' often fails for Firebase tokens; manual verification is more reliable.
-        const projectId = process.env.FIREBASE_PROJECT_ID || 'dragdrop-2a9a4';
+        const projectId = process.env.FIREBASE_PROJECT_ID;
 
         // Function to fetch Firebase public keys (cached in memory could be added for perf, but this is safe)
         const getFirebasePublicKeys = () => {
